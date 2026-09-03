@@ -303,8 +303,17 @@ function saldoJahr(nr,jahr){
   return (k.typ==='einnahme'||k.typ==='verbindlichkeit'||k.typ==='eigenkapital')?h-s:s-h;
 }
 function offenePosten(){return DB.buchungen.filter(function(b){return b.status==='offen';});}
-function zahlungErfassen(forderungId,datum,zahlungskonto){
+function zahlungErfassen(forderungId,datum,zahlungskonto,betrag){
   var f=DB.buchungen.find(function(b){return b.id===forderungId;});if(!f||f.status!=='offen')return null;
+  var voll=f.betrag;
+  betrag=(betrag===undefined||betrag===null||betrag==='')?voll:Math.round((parseFloat(betrag)||0)*100)/100;
+  if(!(betrag>0)||betrag>voll+0.004)return null;
+  if(betrag<voll-0.004){
+    var rest=Math.round((voll-betrag)*100)/100;
+    var r=buche({datum:f.datum,faellig:f.faellig,jahr:f.jahr||null,umlage:f.umlage||null,text:f.text+' – Restbetrag',soll:f.soll,haben:f.haben,betrag:rest,kontaktId:f.kontaktId,mitgliedId:f.mitgliedId,art:f.art,status:'offen'});
+    r.mahnungen=JSON.parse(JSON.stringify(f.mahnungen||[]));
+    f.betrag=betrag;
+  }
   var z=buche({datum:datum,text:'Zahlungseingang: '+f.text,soll:zahlungskonto,haben:f.soll,betrag:f.betrag,kontaktId:f.kontaktId,mitgliedId:f.mitgliedId,art:'zahlung',forderungId:f.id});
   f.status='bezahlt';f.bezahltAm=datum;f.zahlungBelegId=z.id;save();return z;
 }
@@ -521,7 +530,7 @@ function buchungStorno(id){
 }
 function zahlungDialog(id){
   var b=DB.buchungen.find(function(x){return x.id===id;});
-  openModal('<h2>Zahlungseingang erfassen</h2><div class="sum" style="margin-bottom:1rem"><div class="row"><span>'+esc(b.text)+'</span><span>'+eur(b.betrag)+'</span></div></div><div class="frow"><div class="field"><label>Zahlungsdatum</label><input id="z_datum" type="date" value="'+heute()+'"></div><div class="field"><label>Geld eingegangen auf</label><select id="z_konto">'+DB.konten.filter(function(k){return k.typ==='aktiva';}).map(function(k){return '<option value="'+k.nr+'"'+(k.nr==='1200'?' selected':'')+'>'+k.nr+' '+k.name+'</option>';}).join('')+'</select></div></div><div class="mfoot"><button class="btn btn-hell" onclick="closeModal()">Abbrechen</button><button class="btn btn-rot" onclick="(function(){var z=zahlungErfassen(\''+id+'\',val(\'z_datum\'),val(\'z_konto\'));if(z){toast(\'Zahlung gebucht: \'+z.belegnr);closeModal();if(current===\'offen\')vOffen();else if(current===\'mitglieder\')vMitglieder();else if(current===\'dashboard\')vDashboard();}})()">Zahlung buchen</button></div>');
+  openModal('<h2>Zahlungseingang erfassen</h2><div class="sum" style="margin-bottom:1rem"><div class="row"><span>'+esc(b.text)+'</span><span>'+eur(b.betrag)+'</span></div></div><div class="frow3"><div class="field"><label>Zahlungsdatum</label><input id="z_datum" type="date" value="'+heute()+'"></div><div class="field"><label>Gezahlter Betrag (€)</label><input id="z_betrag" type="number" step="0.01" min="0.01" max="'+b.betrag+'" value="'+b.betrag+'"></div><div class="field"><label>Geld eingegangen auf</label><select id="z_konto">'+DB.konten.filter(function(k){return k.typ==='aktiva';}).map(function(k){return '<option value="'+k.nr+'"'+(k.nr==='1200'?' selected':'')+'>'+k.nr+' '+k.name+'</option>';}).join('')+'</select></div></div><div class="hint">Weniger als der volle Betrag = <b>Teilzahlung</b>: Der Rest bleibt automatisch als eigener offener Posten stehen (Fälligkeit und Mahnstand bleiben erhalten).</div><div class="mfoot"><button class="btn btn-hell" onclick="closeModal()">Abbrechen</button><button class="btn btn-rot" onclick="(function(){var bb=parseFloat(val(\'z_betrag\'));var z=zahlungErfassen(\''+id+'\',val(\'z_datum\'),val(\'z_konto\'),bb);if(z){toast(\'Zahlung gebucht: \'+z.belegnr);closeModal();if(current===\'offen\')vOffen();else if(current===\'mitglieder\')vMitglieder();else if(current===\'dashboard\')vDashboard();}else toast(\'Betrag prüfen – maximal \'+eur('+b.betrag+'),true);})()">Zahlung buchen</button></div>');
 }
 function mahnliste(){
   var list=offenePosten().sort(function(a,b){return kName(a.kontaktId).localeCompare(kName(b.kontaktId));});
