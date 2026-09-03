@@ -654,55 +654,70 @@ function naechsteTermineHTML(n){
 }
 async function vPortalNews(){
   current='portal_news';brand();
-  C('<div class="toolbar"><button class="btn btn-rot" onclick="newsForm()">+ News erstellen</button><span class="hint" style="margin:0;display:inline-block;vertical-align:middle;max-width:400px">News erscheinen im Mitgliederbereich auf bskopjueck.de – du kannst Sichtbarkeit je Eintrag steuern.</span></div>'+
+  C('<div class="toolbar"><button class="btn btn-rot" onclick="newsForm()">+ News erstellen</button>'+
+  '<span class="hint" style="margin:0;display:inline-block;vertical-align:middle;max-width:420px">News erscheinen sofort im Mitgliederbereich auf bskopjueck.de/mitglieder</span></div>'+
   '<div id="news-liste"><div class="card" style="text-align:center;padding:2rem"><div class="loader"></div></div></div>');
-  if(!CDB.db){C('<div class="card"><p>Nicht eingeloggt – bitte zuerst unter Team & Cloud anmelden.</p></div>');return;}
+  if(!cloudAngemeldet()){document.getElementById('news-liste').innerHTML='<div class="card"><p>Bitte zuerst anmelden (Team & Cloud → Anmelden).</p></div>';return;}
   try{
-    var res=await CDB.db.from('portal_news').select('*').order('datum',{ascending:false});
-    var nl=res.data||[];
-    var el=document.getElementById('news-liste');if(!el)return;
+    var r=await cloudFetch('/rest/v1/portal_news?select=*&order=datum.desc',{},true);
+    var nl=await r.json();
+    if(!Array.isArray(nl)){document.getElementById('news-liste').innerHTML='<div class="card"><p style="color:var(--rot)">Fehler beim Laden. SQL ggf. noch ausführen.</p></div>';return;}
     var SICHT={'alle':'Alle Mitglieder','vorstand':'Nur Vorstand','custom':'Ausgewählte'};
-    el.innerHTML=nl.length?'<div class="tbl-wrap"><table><tr><th>Datum</th><th>Titel</th><th>Sichtbar für</th><th></th></tr>'+
-      nl.map(function(n){return '<tr><td>'+dt(n.datum)+'</td><td><b>'+esc(n.titel)+'</b><br><small style="color:var(--grau)">'+esc((n.inhalt||'').slice(0,60))+'…</small></td>'+
+    document.getElementById('news-liste').innerHTML=nl.length?
+      '<div class="tbl-wrap"><table><tr><th>Datum</th><th>Titel</th><th>Bild</th><th>Sichtbar für</th><th></th></tr>'+
+      nl.map(function(n){return '<tr><td>'+dt(n.datum)+'</td><td><b>'+esc(n.titel)+'</b><br><small style="color:var(--grau)">'+esc((n.inhalt||'').slice(0,55))+'…</small></td>'+
+        '<td>'+(n.bild_url?'<img src="'+esc(n.bild_url)+'" style="height:40px;width:60px;object-fit:cover;border-radius:4px">':'–')+'</td>'+
         '<td><span class="tag '+(n.sichtbar_fuer==='alle'?'tag-gruen':'tag-blau')+'">'+esc(SICHT[n.sichtbar_fuer]||n.sichtbar_fuer||'Alle')+'</span></td>'+
-        '<td class="akt"><button class="btn btn-hell btn-sm" onclick="newsForm(\''+n.id+'\')">Bearbeiten</button> '+
-        '<button class="btn btn-ghost btn-sm" onclick="newsLoeschen(\''+n.id+'\')">Löschen</button></td></tr>';}).join('')+'</table></div>'
-    :'<div class="card"><div class="empty">Noch keine News. Klick auf „+ News erstellen".</div></div>';
+        '<td class="akt"><button class="btn btn-hell btn-sm" onclick="newsForm(\''+n.id+'\')">Bearb.</button> '+
+        '<button class="btn btn-ghost btn-sm" onclick="newsLoeschen(\''+n.id+'\')" style="color:var(--rot)">Löschen</button></td></tr>';}).join('')+'</table></div>'
+      :'<div class="card"><div class="empty">Noch keine News vorhanden. Klick auf „+ News erstellen".</div></div>';
   }catch(e){document.getElementById('news-liste').innerHTML='<div class="card"><p style="color:var(--rot)">Fehler: '+esc(e.message)+'</p></div>';}
 }
 async function newsForm(id){
   var n={};
   if(id){
-    var r=await CDB.db.from('portal_news').select('*').eq('id',id).single();
-    n=r.data||{};
+    try{var r=await cloudFetch('/rest/v1/portal_news?id=eq.'+id+'&limit=1',{},true);var arr=await r.json();n=arr[0]||{};}catch(e){}
   }
   openModal('<h2>'+(id?'News bearbeiten':'Neue News')+'</h2>'+
   '<div class="field"><label>Datum</label><input id="nf_datum" type="date" value="'+(n.datum||heute())+'"></div>'+
-  '<div class="field"><label>Titel</label><input id="nf_titel" placeholder="z.B. Sitzung am 15. Oktober" value="'+esc(n.titel||'')+'"></div>'+
-  '<div class="field"><label>Inhalt</label><textarea id="nf_inhalt" style="min-height:120px">'+esc(n.inhalt||'')+'</textarea></div>'+
+  '<div class="field"><label>Titel</label><input id="nf_titel" placeholder="z.B. Sitzung am 15. Oktober – alle kommen!" value="'+esc(n.titel||'')+'"></div>'+
+  '<div class="field"><label>Inhalt (Absätze mit Enter trennen)</label><textarea id="nf_inhalt" style="min-height:140px" placeholder="Schreib hier die News ...">'+esc(n.inhalt||'')+'</textarea></div>'+
+  '<div class="field"><label>Bild (URL – z.B. Link aus Google Drive, Instagram oder Dropbox)</label>'+
+  '<input id="nf_bild" placeholder="https://... oder leer lassen" value="'+esc(n.bild_url||'')+'">'+
+  '<div id="nf_bild_vorschau" style="margin-top:.4rem">'+(n.bild_url?'<img src="'+esc(n.bild_url)+'" style="max-height:120px;border-radius:8px;max-width:100%">':'')+'</div>'+
+  '<small style="color:var(--grau)">Tipp: In Google Drive → Rechtsklick → „Link kopieren" → in Freigabe auf „Jeder mit dem Link" setzen. Oder Bild auf <a href="https://postimages.org" target="_blank">postimages.org</a> hochladen und Link einfügen.</small></div>'+
   '<div class="field"><label>Sichtbar für</label><select id="nf_sicht">'+
-  '<option value="alle"'+((!n.sichtbar_fuer||n.sichtbar_fuer==="alle")?" selected":"")+'>Alle Mitglieder</option>'+
-  '<option value="vorstand"'+(n.sichtbar_fuer==="vorstand"?" selected":"")+'>Nur Vorstand (Rollen: Vorsitzende/r, Kassierer)</option>'+
+  '<option value="alle"'+(!n.sichtbar_fuer||n.sichtbar_fuer==='alle'?' selected':'')+'>Alle Mitglieder</option>'+
+  '<option value="vorstand"'+(n.sichtbar_fuer==='vorstand'?' selected':'')+'>Nur Vorstand</option>'+
   '</select></div>'+
-  '<div class="hint">News erscheinen sofort auf bskopjueck.de/mitglieder für die gewählte Gruppe.</div>'+
-  '<div class="mfoot"><button class="btn btn-hell" onclick="closeModal()">Abbrechen</button><button class="btn btn-rot" onclick="newsSpeichern(\''+(id||'')+'\')">Speichern & veröffentlichen</button></div>');
+  '<div class="mfoot">'+(id?'<button class="btn btn-ghost" onclick="newsLoeschen(\''+id+'\')" style="color:var(--rot)">Löschen</button>':'')+'<button class="btn btn-hell" onclick="closeModal()">Abbrechen</button><button class="btn btn-rot" onclick="newsSpeichern(\''+( id||'')+'\')">Speichern & veröffentlichen</button></div>');
+  document.getElementById('nf_bild').addEventListener('input',function(){
+    var v=this.value.trim();
+    document.getElementById('nf_bild_vorschau').innerHTML=v?'<img src="'+esc(v)+'" style="max-height:120px;border-radius:8px;max-width:100%" onerror="this.style.display=\'none\'" onload="this.style.display=\'\'">':'';
+  });
 }
 async function newsSpeichern(id){
-  var o={titel:val('nf_titel'),inhalt:val('nf_inhalt'),datum:val('nf_datum')||heute(),sichtbar_fuer:val('nf_sicht')||'alle'};
+  var o={titel:val('nf_titel'),inhalt:val('nf_inhalt'),datum:val('nf_datum')||heute(),sichtbar_fuer:val('nf_sicht')||'alle',bild_url:val('nf_bild').trim()||null};
   if(!o.titel){toast('Titel fehlt',true);return;}
   if(!o.inhalt){toast('Inhalt fehlt',true);return;}
-  var err;
-  if(id){var r=await CDB.db.from('portal_news').update(o).eq('id',id);err=r.error;}
-  else{var r=await CDB.db.from('portal_news').insert(o);err=r.error;}
-  if(err){toast('Fehler: '+err.message,true);return;}
-  closeModal();toast(id?'News aktualisiert':'News veröffentlicht');vPortalNews();
+  var headers={'Content-Type':'application/json','Prefer':'return=minimal'};
+  try{
+    var r;
+    if(id)r=await cloudFetch('/rest/v1/portal_news?id=eq.'+id,{method:'PATCH',headers:headers,body:JSON.stringify(o)},true);
+    else r=await cloudFetch('/rest/v1/portal_news',{method:'POST',headers:headers,body:JSON.stringify(o)},true);
+    if(!r.ok){var t=await r.text();toast('Fehler: '+t.slice(0,80),true);return;}
+    closeModal();toast(id?'News aktualisiert ✓':'News veröffentlicht ✓');vPortalNews();
+  }catch(e){toast('Fehler: '+e.message,true);}
 }
 async function newsLoeschen(id){
   if(!confirm('Diese News wirklich löschen?'))return;
-  var r=await CDB.db.from('portal_news').delete().eq('id',id);
-  if(r.error){toast('Fehler: '+r.error.message,true);return;}
-  toast('News gelöscht');vPortalNews();
+  try{
+    var r=await cloudFetch('/rest/v1/portal_news?id=eq.'+id,{method:'DELETE'},true);
+    if(!r.ok){toast('Fehler beim Löschen',true);return;}
+    toast('News gelöscht');closeModal();vPortalNews();
+  }catch(e){toast('Fehler: '+e.message,true);}
 }
+
 function vKalender(){
   var now=new Date();if(window._ky===undefined){window._ky=now.getFullYear();window._km=now.getMonth();}
   var y=window._ky,mo=window._km;var first=new Date(y,mo,1);var start=(first.getDay()+6)%7;var tage=new Date(y,mo+1,0).getDate();
