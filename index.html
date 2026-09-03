@@ -1192,7 +1192,10 @@ function kontaktForm(id,cb){
     '<div class="field"><label>Erziehungsberechtigte/r (bei Minderjährigen – Name & Telefon)</label><input id="k_erz" value="'+esc(k.erziehungsberechtigt||'')+'" placeholder="z. B. Petra Mustermann, 0170 1234567"></div>'+
     '<div class="field"><label>Notfallkontakt (optional – Name & Telefon)</label><input id="k_notfall" value="'+esc(k.notfall||'')+'"></div></div>'+
   '<div id="kf_rollen" style="display:none">'+
-    '<div class="field"><label>Ämter & Rollen (mit Von/Bis)</label><div id="kf_aemter"></div><button class="btn btn-hell btn-sm" onclick="amtRow()">+ Amt/Rolle hinzufügen</button><br><small style="color:var(--grau)">Bis-Datum leer lassen, solange das Amt läuft. Beim Beenden das Bis-Datum eintragen – die Historie bleibt erhalten. Die Rollen-Auswahlliste pflegst du unter Einstellungen.</small></div>'+
+    '<div class="field"><label>Ämter & Rollen</label><div id="kf_aemter"></div>'+
+    ((id&&DB.mitglieder.some(function(m){return m.kontaktId===id&&m.status==='aktiv';}))?
+      '<select onchange="amtWahl(this)" style="max-width:280px"><option value="">– Amt auswählen und zuweisen … –</option>'+DB.settings.rollen.map(function(r){return '<option>'+esc(r)+'</option>';}).join('')+'</select><br><small style="color:var(--grau)">Amt wählen → Eintrag erscheint mit Ab-Datum. Beenden = Bis-Datum eintragen (Historie bleibt). Die Ämterliste pflegst du unter Einstellungen.</small>'
+      :'<div class="hint" style="margin:0">Ämter können nur <b>aktiven Mitgliedern</b> zugewiesen werden'+(id?'.':' – Kontakt erst speichern und zum Mitglied machen.')+' Bestehende Einträge kannst du hier weiterhin beenden (Bis-Datum).</div>')+'</div>'+
     '<div class="field"><label>Notizen</label><textarea id="k_notiz" style="min-height:110px">'+esc(k.notizen||'')+'</textarea></div></div>'+
   '<div class="mfoot">'+(id?'<button class="btn btn-ghost" onclick="kontaktLoeschen(\''+id+'\')">Löschen</button>':'')+'<button class="btn btn-hell" onclick="closeModal()">Abbrechen</button><button class="btn btn-rot" onclick="kontaktSpeichern(\''+(id||'')+'\')">Speichern</button></div>',true);
   window._kcb=cb;
@@ -1200,7 +1203,7 @@ function kontaktForm(id,cb){
 }
 function kontaktSpeichern(id){
   var d={typ:val('k_typ'),firma:val('k_firma'),webseite:val('k_web'),vorname:val('k_vorname'),nachname:val('k_nachname'),strasse:val('k_strasse'),plz:val('k_plz'),ort:val('k_ort'),email:val('k_email'),telefon:val('k_telefon'),geburtstag:val('k_geb'),iban:val('k_iban').replace(/\s+/g,'').toUpperCase(),erziehungsberechtigt:val('k_erz'),notfall:val('k_notfall'),notizen:val('k_notiz'),aemter:Array.prototype.slice.call(document.querySelectorAll('#kf_aemter .amtrow')).map(function(row){
-    return {id:uid(),rolle:row.querySelector('.amt_rolle').value,von:row.querySelector('.amt_von').value||heute(),bis:row.querySelector('.amt_bis').value||null};
+    return {id:uid(),rolle:row.querySelector('.amt_rolle').getAttribute('data-rolle'),von:row.querySelector('.amt_von').value||heute(),bis:row.querySelector('.amt_bis').value||null};
   })};
   for(var ai=0;ai<d.aemter.length;ai++){var a=d.aemter[ai];if(a.bis&&a.bis<a.von){tabShow('kf_','kf_rollen');toast('Amt „'+a.rolle+'“: Bis-Datum liegt vor dem Ab-Datum',true);return;}}
   d.rollen=[];(function(){var h=heute();d.aemter.forEach(function(a){if((!a.bis||a.bis>=h)&&a.von<=h&&d.rollen.indexOf(a.rolle)<0)d.rollen.push(a.rolle);});})();
@@ -2263,14 +2266,21 @@ function aemterSync(k){k.rollen=aktiveRollen(k);}
 function amtRow(rolle,von,bis){
   var wrap=document.getElementById('kf_aemter');if(!wrap)return;
   var div=document.createElement('div');
-  div.className='amtrow';div.style.cssText='display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-bottom:.4rem';
-  var opts=DB.settings.rollen.slice();
-  if(rolle&&opts.indexOf(rolle)<0)opts.unshift(rolle);
-  div.innerHTML='<select class="amt_rolle" style="padding:.4rem;border:1.5px solid var(--linie);border-radius:6px;min-width:180px">'+opts.map(function(r){return '<option'+(r===rolle?' selected':'')+'>'+esc(r)+'</option>';}).join('')+'</select>'+
-  '<label style="font-size:.75rem;color:var(--grau)">ab</label><input type="date" class="amt_von" value="'+(von||heute())+'" style="padding:.4rem;border:1.5px solid var(--linie);border-radius:6px">'+
-  '<label style="font-size:.75rem;color:var(--grau)">bis</label><input type="date" class="amt_bis" value="'+(bis||'')+'" style="padding:.4rem;border:1.5px solid var(--linie);border-radius:6px" title="leer = läuft aktuell">'+
+  div.className='amtrow';div.style.cssText='display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.4rem;padding:.45rem .7rem;background:var(--tint);border-radius:8px';
+  div.innerHTML='<b class="amt_rolle" data-rolle="'+esc(rolle)+'" style="min-width:150px;font-size:.88rem">'+esc(rolle)+'</b>'+
+  '<label style="font-size:.75rem;color:var(--grau)">ab</label><input type="date" class="amt_von" value="'+(von||heute())+'" style="padding:.35rem .5rem;border:1.5px solid var(--linie);border-radius:6px">'+
+  '<label style="font-size:.75rem;color:var(--grau)">bis</label><input type="date" class="amt_bis" value="'+(bis||'')+'" style="padding:.35rem .5rem;border:1.5px solid var(--linie);border-radius:6px" title="leer = läuft aktuell">'+
   '<button class="btn btn-ghost btn-sm" onclick="this.parentNode.remove()" title="Eintrag entfernen (nur für Fehleingaben – beendete Ämter bitte mit Bis-Datum behalten)">✕</button>';
   wrap.appendChild(div);
+}
+function amtWahl(sel){
+  var r=sel.value;sel.value='';
+  if(!r)return;
+  var laeuft=Array.prototype.slice.call(document.querySelectorAll('#kf_aemter .amtrow')).some(function(row){
+    return row.querySelector('.amt_rolle').getAttribute('data-rolle')===r&&!row.querySelector('.amt_bis').value;
+  });
+  if(laeuft){toast('„'+r+'“ läuft bereits – erst mit Bis-Datum beenden',true);return;}
+  amtRow(r,heute(),'');
 }
 function amtBeenden(kid,aid){
   var k=kontakt(kid);if(!k)return;
