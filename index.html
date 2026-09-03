@@ -1130,7 +1130,7 @@ function mitgliedDetail(id){
   var mandatTag=md.status==='aktiv'?'<span class="tag tag-gruen">Mandat aktiv</span>':md.status==='widerrufen'?'<span class="tag tag-rot">Mandat widerrufen</span>':'<span class="tag tag-grau">kein Mandat</span>';
   openModal('<h2><span class="mnr">'+m.mitgliedsnr+'</span> · '+esc(kName(k.id))+' '+statusTag(m.status)+(minderjaehrig(k)?' <span class="tag tag-gelb">minderjährig</span>':'')+'</h2>'+
   '<p style="color:var(--grau);font-size:.84rem;margin:-.6rem 0 .9rem">Mitglied seit '+dt(m.eintritt)+' ('+mitgliedsJahre(m)+' Jahre'+(mitgliedsJahre(m)>0&&mitgliedsJahre(m)%5===0?' – Jubiläum! 🏅':'')+')'+(a!==null?' · '+a+' Jahre alt':'')+' · offen: '+(off>0?'<b style="color:var(--rot)">'+eur(off)+'</b>':eur(0))+'</p>'+
-  '<div class="tabs"><button class="on" onclick="tabM(this,\'md_daten\')">Daten</button><button onclick="tabM(this,\'md_konto\')">Beitragskonto ('+bu.length+')</button><button onclick="tabM(this,\'md_verlauf\')">Verlauf</button><button onclick="tabM(this,\'md_post\')">Schriftverkehr ('+sv.length+')</button><button onclick="tabM(this,\'md_sepa\')">SEPA-Mandat</button></div>'+
+  '<div class="tabs"><button class="on" onclick="tabM(this,\'md_daten\')">Daten</button><button onclick="tabM(this,\'md_konto\')">Beitragskonto ('+bu.length+')</button><button onclick="tabM(this,\'md_aemter\')">Ämter</button><button onclick="tabM(this,\'md_verlauf\')">Verlauf</button><button onclick="tabM(this,\'md_post\')">Schriftverkehr ('+sv.length+')</button><button onclick="tabM(this,\'md_sepa\')">SEPA-Mandat</button></div>'+
   '<div id="md_daten" class="detail">'+
   (fd.length?'<div class="hint warn"><b>Unvollständige Daten:</b> '+esc(fd.join(' · '))+'</div>':'')+
   (vor?'<div class="hint warn"><b>Mahnwesen:</b> nächster Schritt '+BRIEF_TITEL[vor]+(vor==='anhoerung'?' (2. Mahnung abgelaufen – Ausschluss prüfen)':'')+'.</div>':'')+
@@ -1141,6 +1141,7 @@ function mitgliedDetail(id){
   '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem"><button class="btn btn-hell btn-sm" onclick="briefDrucken(\'zahlung\',\''+id+'\')">Zahlungserinnerung</button><button class="btn btn-hell btn-sm" onclick="briefDrucken(\'mahnung\',\''+id+'\')">1. Mahnung</button><button class="btn btn-hell btn-sm" onclick="briefDrucken(\'mahnung2\',\''+id+'\')">2. Mahnung</button><button class="btn btn-ghost btn-sm" onclick="anhoerungDialog(\''+id+'\')">Anhörung</button><button class="btn btn-ghost btn-sm" onclick="ausschlussDialog(\''+id+'\')">Ausschluss</button></div></div>'+
   (m.notizen?'<p style="margin-top:.8rem;font-size:.86rem"><b>Notiz:</b> '+esc(m.notizen)+'</p>':'')+
   '<div class="mfoot" style="justify-content:flex-start"><button class="btn btn-hell btn-sm" onclick="kontaktForm(\''+k.id+'\',function(){mitgliedDetail(\''+id+'\')})">Kontaktdaten bearbeiten</button><button class="btn btn-hell btn-sm" onclick="mitgliedBearbeiten(\''+id+'\')">Mitgliedschaft bearbeiten</button>'+(m.status==='aktiv'?'<button class="btn btn-hell btn-sm" onclick="beitragStellen(\''+id+'\')">Jahresbeitrag stellen</button><button class="btn btn-ghost btn-sm" onclick="mitgliedAustritt(\''+id+'\')">Austritt erfassen</button>':'<button class="btn btn-gruen btn-sm" onclick="mitgliedReaktivieren(\''+id+'\')">Reaktivieren</button>')+'<button class="btn btn-ghost btn-sm" onclick="mitgliedLoeschen(\''+id+'\')">Mitgliedschaft löschen</button>'+'</div></div>'+
+  '<div id="md_aemter" style="display:none"><div class="card">'+(m.status==='aktiv'?'<div style="margin-bottom:.8rem"><label style="font-weight:600;font-size:.85rem">Amt zuweisen</label><br><select id="md_amtwahl" onchange="mdAmtWahl(\''+id+'\',this)" style="max-width:300px;margin-top:.35rem"><option value="">– Amt auswählen –</option>'+DB.settings.rollen.map(function(r){return '<option>'+esc(r)+'</option>';}).join('')+'</select></div>':'<div class="hint" style="margin:0 0 .8rem">Nur bei aktiven Mitgliedern möglich.</div>')+'<div id="md_aemter_liste">'+aemterTabelle(k)+'</div></div></div>'+
   '<div id="md_konto" style="display:none">'+(off>0?'<div class="hint warn"><b>Offen: '+eur(off)+'</b></div>':'')+
   '<div class="tbl-wrap"><table><tr><th>Fällig</th><th>Beleg</th><th>Text</th><th>Status</th><th>Mahnstufe</th><th class="num">Betrag</th><th></th></tr>'+(bu.length?bu.map(function(b){return '<tr><td>'+dt(b.faellig||b.datum)+'</td><td>'+b.belegnr+'</td><td>'+esc(b.text)+'</td><td>'+bStatus(b)+'</td><td>'+(b.status==='offen'?mahnTag(b):'')+'</td><td class="num">'+eur(b.betrag)+'</td><td class="akt">'+(b.status==='offen'?'<button class="btn btn-gruen btn-sm" onclick="zahlungDialog(\''+b.id+'\')">Zahlung</button> ':'')+'<button class="btn btn-hell btn-sm" onclick="belegDrucken([\''+b.id+'\'])">Beleg</button></td></tr>';}).join(''):'<tr><td colspan="7" class="empty">Keine Buchungen.</td></tr>')+'</table></div></div>'+
   '<div id="md_verlauf" style="display:none">'+verlaufHTML(m)+'</div>'+
@@ -1151,7 +1152,7 @@ function mitgliedDetail(id){
   '<div class="field"><label>Kontoinhaber (falls abweichend, z. B. Erziehungsberechtigte/r)</label><input id="sp_inhaber" value="'+esc(md.inhaber||'')+'" placeholder="'+esc(kName(k.id))+'"></div>'+
   '<div class="mfoot" style="justify-content:flex-start"><button class="btn btn-rot btn-sm" onclick="mandatSpeichern(\''+id+'\')">Mandat speichern</button><button class="btn btn-hell btn-sm" onclick="sepaDrucken(\''+id+'\')">Mandatsformular drucken</button></div></div>',true);
 }
-function tabM(btn,id){btn.parentNode.querySelectorAll('button').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');['md_daten','md_konto','md_verlauf','md_post','md_sepa'].forEach(function(x){var e=document.getElementById(x);if(e)e.style.display=x===id?'':'none';});}
+function tabM(btn,id){btn.parentNode.querySelectorAll('button').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');['md_daten','md_konto','md_aemter','md_verlauf','md_post','md_sepa'].forEach(function(x){var e=document.getElementById(x);if(e)e.style.display=x===id?'':'none';});}
 
 /* ---------- Aufnahme: Raten ---------- */
 /* ---------- Offene Posten mit Fälligkeit ---------- */
@@ -2307,6 +2308,20 @@ function aemterTabelle(k){
     var aktiv=(!a.bis||a.bis>=h)&&a.von<=h;
     return '<tr><td><b>'+esc(a.rolle)+'</b>'+(aktiv?' <span class="tag tag-gruen">aktuell</span>':'')+'</td><td>'+dt(a.von)+'</td><td>'+(a.bis?dt(a.bis):'<span style="color:var(--grau)">läuft</span>')+'</td><td class="akt">'+(aktiv?'<button class="btn btn-hell btn-sm" onclick="amtBeenden(\''+k.id+'\',\''+a.id+'\')">Beenden</button>':'')+'</td></tr>';
   }).join('')+'</table></div>';
+}
+
+function mdAmtWahl(mid,sel){
+  var r=sel.value;sel.value='';if(!r)return;
+  var m=mitglied(mid);if(!m)return;
+  var k=kontakt(m.kontaktId);if(!k)return;
+  var h=heute();
+  var laeuft=(k.aemter||[]).some(function(a){return a.rolle===r&&(!a.bis||a.bis>=h)&&a.von<=h;});
+  if(laeuft){toast('„'+r+'" läuft bereits',true);return;}
+  if(!k.aemter)k.aemter=[];
+  k.aemter.push({id:uid(),rolle:r,von:h,bis:null});
+  aemterSync(k);save();toast(r+' ab heute zugewiesen');
+  var e=document.getElementById('md_aemter_liste');
+  if(e)e.innerHTML=aemterTabelle(k);
 }
 
 /* ---------- Start ---------- */
