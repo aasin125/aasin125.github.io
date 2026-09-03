@@ -495,6 +495,7 @@ function vBuchen(){
   '<div class="mfoot"><button class="btn btn-rot" onclick="buchungSpeichern(\''+art+'\')">Buchen & Beleg erzeugen</button></div></div>');
 }
 function buchungSpeichern(art){
+  if(gesperrtDatum(val('b_datum'))){toast('Buchungsdatum liegt im abgeschlossenen Jahr (bis '+dt(DB.settings.abschlussBis)+')',true);return;}
   var betrag=parseFloat(val('b_betrag').replace(',','.'));if(!(betrag>0)){toast('Betrag fehlt',true);return;}
   var text=val('b_text');if(!text){toast('Buchungstext fehlt',true);return;}
   var o={datum:val('b_datum')||heute(),betrag:betrag,text:text,kontaktId:val('b_kontakt')||null,art:art};
@@ -521,6 +522,7 @@ function vJournal(){
 }
 function buchungStorno(id){
   var b=DB.buchungen.find(function(x){return x.id===id;});if(!b)return;
+  if(gesperrtDatum(b.datum)){toast('Jahr abgeschlossen – Storno gesperrt (Aufheben: Einstellungen)',true);return;}
   if(b.status==='bezahlt'){toast('Erst die zugehörige Zahlung stornieren',true);return;}
   if(!confirm('Buchung '+b.belegnr+' stornieren? Es wird eine Gegenbuchung erzeugt.'))return;
   if(b.forderungId){var f=DB.buchungen.find(function(x){return x.id===b.forderungId;});if(f){f.status='offen';f.bezahltAm=null;f.zahlungBelegId=null;}}
@@ -539,7 +541,7 @@ function mahnliste(){
 }
 function vKonten(){
   var j=DB.settings.geschaeftsjahr;
-  C('<div class="toolbar"><button class="btn btn-rot" onclick="kontoForm()">+ Neues Konto</button><span style="color:var(--grau);font-size:.84rem">Salden gesamt & Geschäftsjahr '+j+'</span></div>'+
+  C('<div class="toolbar"><button class="btn btn-rot" onclick="kontoForm()">+ Neues Konto</button><button class="btn btn-gruen" onclick="anfangsbestandDialog()">Anfangsbestände (Kasse/Bank)</button><span style="color:var(--grau);font-size:.84rem">Salden gesamt & Geschäftsjahr '+j+'</span></div>'+
   '<div class="card"><div class="tbl-wrap"><table><tr><th>Nr.</th><th>Konto</th><th>Typ</th><th>Bereich</th><th class="num">Saldo '+j+'</th><th class="num">Saldo gesamt</th><th></th></tr>'+
   DB.konten.slice().sort(function(a,b){return a.nr.localeCompare(b.nr);}).map(function(k){var s=saldo(k.nr),sj=saldoJahr(k.nr,j);return '<tr><td><span class="mnr">'+k.nr+'</span></td><td><b>'+esc(k.name)+'</b></td><td><small>'+TYPEN[k.typ]+'</small></td><td><small>'+BEREICHE[k.bereich]+'</small></td><td class="num">'+eur(sj)+'</td><td class="num '+(s<0?'saldo-neg':'')+'">'+eur(s)+'</td><td class="akt"><button class="btn btn-hell btn-sm" onclick="kontoForm(\''+k.nr+'\')">Bearbeiten</button></td></tr>';}).join('')+'</table></div></div>'+
   '<div class="hint" style="margin-top:1rem"><b>Bereiche (für e.V. / Gemeinnützigkeit):</b> Ideeller Bereich = Beiträge, Spenden, Eintrittsgelder · Zweckbetrieb = z. B. Vereinskleidung an Mitglieder · Wirtschaftlicher Geschäftsbetrieb = Sponsoring, Werbung, Verkauf an Dritte · Vermögensverwaltung = Kasse, Bank, Forderungen. Für den n.e.V. kannst du die Bereiche ignorieren – sie tun nichts weh.</div>');
@@ -593,7 +595,7 @@ function vAuswertung(){
   var ausg=DB.konten.filter(function(k){return k.typ==='ausgabe';}).map(function(k){return [k,saldoJahr(k.nr,j)];});
   var se=einn.reduce(function(a,x){return a+x[1];},0),sa=ausg.reduce(function(a,x){return a+x[1];},0);
   var bereiche={};DB.konten.forEach(function(k){if(k.typ!=='einnahme'&&k.typ!=='ausgabe')return;var v=saldoJahr(k.nr,j)*(k.typ==='ausgabe'?-1:1);bereiche[k.bereich]=(bereiche[k.bereich]||0)+v;});
-  C('<div class="toolbar"><select onchange="window._aj=this.value;vAuswertung()">'+jahre.map(function(y){return '<option'+(y===j?' selected':'')+'>'+y+'</option>';}).join('')+'</select><button class="btn btn-hell" onclick="euerDrucken('+j+')">EÜR drucken</button><button class="btn btn-hell" onclick="exportJournalCSV('+j+')">Journal '+j+' als CSV</button></div>'+
+  C('<div class="toolbar"><select onchange="window._aj=this.value;vAuswertung()">'+jahre.map(function(y){return '<option'+(y===j?' selected':'')+'>'+y+'</option>';}).join('')+'</select><button class="btn btn-hell" onclick="euerDrucken('+j+')">EÜR drucken</button><button class="btn btn-rot" onclick="jahresabschlussDialog()">Jahresabschluss</button>'+(DB.settings.abschlussBis?'<span class="tag tag-gruen">abgeschlossen bis '+dt(DB.settings.abschlussBis)+'</span>':'')+'<button class="btn btn-hell" onclick="exportJournalCSV('+j+')">Journal '+j+' als CSV</button></div>'+
   '<div class="grid g3" style="margin-bottom:1rem"><div class="card kpi"><b>'+eur(se)+'</b><span>Einnahmen '+j+'</span></div><div class="card kpi"><b class="rot">'+eur(sa)+'</b><span>Ausgaben '+j+'</span></div><div class="card kpi"><b class="'+(se-sa<0?'rot':'')+'">'+eur(se-sa)+'</b><span>Überschuss / Fehlbetrag</span></div></div>'+
   '<div class="grid g2"><div class="card"><h3>Einnahmen</h3><table>'+einn.map(function(x){return '<tr><td><small>'+x[0].nr+'</small> '+esc(x[0].name)+'</td><td class="num">'+eur(x[1])+'</td></tr>';}).join('')+'<tr><td><b>Summe</b></td><td class="num"><b>'+eur(se)+'</b></td></tr></table></div>'+
   '<div class="card"><h3>Ausgaben</h3><table>'+ausg.map(function(x){return '<tr><td><small>'+x[0].nr+'</small> '+esc(x[0].name)+'</td><td class="num">'+eur(x[1])+'</td></tr>';}).join('')+'<tr><td><b>Summe</b></td><td class="num"><b>'+eur(sa)+'</b></td></tr></table></div></div>'+
@@ -623,6 +625,7 @@ function mitgliedLoeschen(id){
   if(!confirm('Mitgliedschaft '+m.mitgliedsnr+' ENDGÜLTIG löschen?\n\nDer Kontakt (Person) bleibt erhalten. Nutze das nur zum Aufräumen von Fehleingaben – für normale Kündigungen bitte „Austritt erfassen“.'))return;
   var mitBu=false;
   if(bu.length)mitBu=confirm(bu.length+' Buchungen gehören zu dieser Mitgliedschaft (Beiträge, Zahlungen …).\n\nOK = Buchungen AUCH löschen\nAbbrechen = Buchungen behalten (bleiben beim Kontakt)');
+  if(mitBu&&bu.some(function(b){return gesperrtDatum(b.datum);})){mitBu=false;toast('Buchungen liegen teils im abgeschlossenen Jahr – sie bleiben beim Kontakt',true);}
   if(mitBu)DB.buchungen=DB.buchungen.filter(function(b){return b.mitgliedId!==id;});
   else DB.buchungen.forEach(function(b){if(b.mitgliedId===id)b.mitgliedId=null;});
   DB.schreiben.forEach(function(e){if(e.mitgliedId===id)e.mitgliedId=null;});
@@ -964,7 +967,7 @@ function vEinstellungen(){
   '<div class="frow"><div class="field"><label>Kontoinhaber</label><input id="s_inhaber" value="'+esc(s.kontoinhaber||'')+'" placeholder="z. B. Tom Hollinder oder Vereinsname"></div><div class="field"><label>Bank</label><input id="s_bank" value="'+esc(s.bank||'')+'" placeholder="C24 Bank"></div></div>'+
   '<div class="frow"><div class="field"><label>IBAN</label><input id="s_iban" value="'+esc(s.iban||'')+'"></div><div class="field"><label>Gläubiger-ID (SEPA)</label><input id="s_glid" value="'+esc(s.glaeubigerId||'')+'" placeholder="DE98ZZZ09999999999"></div></div></div>'+
   '<div class="card"><h3>Datensicherung</h3><p style="font-size:.86rem;color:var(--grau);margin-bottom:.8rem">Im Team-Modus liegen die Daten auf eurem Vereinsserver – „Alles löschen“ setzt den gemeinsamen Stand für ALLE zurück. <b style="color:var(--ink)">Lade regelmäßig ein Backup herunter</b> und bewahre es sicher auf (Mitgliederdaten = personenbezogene Daten!).</p>'+
-  '<div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn btn-gruen" onclick="backupExport()">Backup herunterladen (JSON)</button><label class="btn btn-hell" style="cursor:pointer">Backup importieren<input type="file" accept=".json" style="display:none" onchange="backupImport(this)"></label><button class="btn btn-ghost" onclick="allesLoeschen()">Alles löschen</button></div>'+
+  '<div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn btn-gruen" onclick="backupExport()">Backup herunterladen (JSON)</button><label class="btn btn-hell" style="cursor:pointer">Backup importieren<input type="file" accept=".json" style="display:none" onchange="backupImport(this)"></label><button class="btn btn-ghost" onclick="allesLoeschen()">Alles löschen</button>'+(DB.settings.abschlussBis?'<button class="btn btn-hell" onclick="abschlussAufheben()">Jahresabschluss aufheben (bis '+dt(DB.settings.abschlussBis)+')</button>':'')+'</div>'+
   '<p style="font-size:.78rem;color:var(--grau);margin-top:.8rem">Stand: '+DB.kontakte.length+' Kontakte · '+DB.mitglieder.length+' Mitgliedschaften · '+DB.buchungen.length+' Buchungen · '+DB.schreiben.length+' Schreiben</p></div></div>'+
   '<div><div class="card" style="margin-bottom:1rem"><h3>Beiträge, Fristen & Nummernkreise</h3>'+
   '<div class="frow"><div class="field"><label>Aktive Mitgliedschaft / Jahr</label><input id="s_b_aktiv" type="number" step="0.01" value="'+s.beitraege.aktiv+'"></div><div class="field"><label>Eintrittsgeld (einmalig)</label><input id="s_eintritt" type="number" step="0.01" value="'+s.eintrittsgeld+'"></div></div>'+
@@ -1300,6 +1303,7 @@ function buchungBearbeiten(id){
 }
 function buchungBearbSpeichern(id){
   var b=DB.buchungen.find(function(x){return x.id===id;});if(!b)return;
+  if(gesperrtDatum(b.datum)||gesperrtDatum(val('be_datum'))){toast('Jahr abgeschlossen – Buchung gesperrt (Aufheben: Einstellungen)',true);return;}
   var gesperrt=b.status==='bezahlt'||b.status==='storniert'||b.art==='zahlung';
   b.datum=val('be_datum')||b.datum;b.faellig=val('be_faellig')||null;b.text=val('be_text')||b.text;b.kontaktId=val('be_kontakt')||null;
   if(!gesperrt){
@@ -1432,14 +1436,15 @@ function importAusfuehren(){
     var name=val('imp_kn_'+nr)||pv.neueKonten[nr].name;var typ=val('imp_kt_'+nr)||pv.neueKonten[nr].typ;
     DB.konten.push({nr:nr,name:name,typ:typ,bereich:'neutral'});
   });
-  var n=0;
+  var n=0,gesp=0;
   pv.ok.forEach(function(e){
+    if(gesperrtDatum(e.datum)){gesp++;return;}
     var b=buche({datum:e.datum,faellig:e.faellig,text:e.text,soll:e.soll,haben:e.haben,betrag:e.betrag,kontaktId:e.kontaktId,art:'import',status:e.status});
     if(e.belegnr)b.belegnr=e.belegnr;
     n++;
   });
   save();window._imp=null;window._impPrev=null;
-  toast(n+' Buchungen importiert');go('journal');
+  toast(n+' Buchungen importiert'+(gesp?' · '+gesp+' übersprungen (Jahr abgeschlossen)':''));go('journal');
 }
 
 /* ============================================================
@@ -2132,6 +2137,109 @@ function umlageAusfuehren(){
     n++;
   });
   save();closeModal();toast(n+' Forderungen „'+titel+'“ gestellt'+(skip?', '+skip+' übersprungen':''));go('offen');
+}
+
+/* ============================================================
+   V11: ANFANGSBESTÄNDE & JAHRESABSCHLUSS
+   ============================================================ */
+function gesperrtDatum(d){return !!(DB.settings.abschlussBis&&d&&d<=DB.settings.abschlussBis);}
+function saldoBis(nr,datum){
+  var k=konto(nr);if(!k)return 0;var s=0,h=0;
+  DB.buchungen.forEach(function(b){if(b.datum>datum)return;if(b.soll===nr)s+=b.betrag;if(b.haben===nr)h+=b.betrag;});
+  return (k.typ==='einnahme'||k.typ==='verbindlichkeit'||k.typ==='eigenkapital')?h-s:s-h;
+}
+function konto9000(){if(!konto('9000')){DB.konten.push({nr:'9000',name:'Anfangsbestände / Saldenvorträge',typ:'eigenkapital',bereich:'neutral'});}}
+function geldkonten(){return DB.konten.filter(function(k){return k.typ==='aktiva'&&k.nr!=='1400';}).sort(function(a,b){return a.nr.localeCompare(b.nr);});}
+function abEintrag(nr,jahr){return DB.buchungen.find(function(b){return b.art==='eroeffnung'&&jahrVon(b.datum)===jahr&&(b.soll===nr||b.haben===nr);});}
+function anfangsbestandDialog(){
+  var j=DB.settings.geschaeftsjahr;
+  openModal('<h2>Anfangsbestände erfassen</h2><div class="hint">Trage ein, was <b>am Stichtag wirklich in der Kasse und auf der Bank</b> war (Kontoauszug / Kassenzählung). Das System bucht daraus die Eröffnungsbuchungen – danach stimmen deine Bestände auf den Cent und laufen mit jeder Buchung automatisch weiter. Erneutes Speichern <b>korrigiert</b> die Eröffnung, es entsteht kein Doppel.</div>'+
+  '<div class="field" style="max-width:220px"><label>Stichtag</label><input id="ab_datum" type="date" value="'+j+'-01-01" onchange="abListeRender()"></div>'+
+  '<div id="ab_liste"></div>'+
+  '<div class="mfoot"><button class="btn btn-hell" onclick="closeModal()">Abbrechen</button><button class="btn btn-rot" onclick="anfangsbestaendeSpeichern()">Anfangsbestände buchen</button></div>');
+  abListeRender();
+}
+function abListeRender(){
+  var e=document.getElementById('ab_liste');if(!e)return;
+  var datum=val('ab_datum')||heute();var jahr=jahrVon(datum);
+  e.innerHTML='<div class="tbl-wrap"><table><tr><th>Konto</th><th>Anfangsbestand am '+dt(datum)+' (€)</th><th class="num">Aktueller Saldo</th></tr>'+
+  geldkonten().map(function(k){
+    var ex=abEintrag(k.nr,jahr);
+    var wert=ex?(ex.soll===k.nr?ex.betrag:-ex.betrag):'';
+    return '<tr><td><span class="mnr">'+k.nr+'</span> <b>'+esc(k.name)+'</b></td><td><input type="number" step="0.01" id="ab_'+k.nr+'" value="'+wert+'" placeholder="leer = keine Änderung" style="width:170px;padding:.4rem .5rem;border:1.5px solid var(--linie);border-radius:6px"></td><td class="num">'+eur(saldo(k.nr))+'</td></tr>';
+  }).join('')+'</table></div><p style="font-size:.78rem;color:var(--grau);margin-top:.5rem">Minusbeträge sind erlaubt (z. B. Konto im Soll). Gegenkonto ist 9000 „Anfangsbestände / Saldenvorträge“.</p>';
+}
+function anfangsbestaendeSpeichern(){
+  var datum=val('ab_datum')||heute();var jahr=jahrVon(datum);
+  if(gesperrtDatum(datum)){toast('Dieses Jahr ist abgeschlossen – erst Abschluss aufheben (Einstellungen)',true);return;}
+  konto9000();
+  var n=0;
+  geldkonten().forEach(function(k){
+    var feld=document.getElementById('ab_'+k.nr);if(!feld)return;
+    var roh=feld.value;if(roh==='')return;
+    var wert=Math.round((parseFloat(roh)||0)*100)/100;
+    var ex=abEintrag(k.nr,jahr);
+    if(wert===0){if(ex)DB.buchungen=DB.buchungen.filter(function(b){return b.id!==ex.id;});n++;return;}
+    var soll=wert>0?k.nr:'9000';var haben=wert>0?'9000':k.nr;var betrag=Math.abs(wert);
+    if(ex){ex.datum=datum;ex.soll=soll;ex.haben=haben;ex.betrag=betrag;ex.text='Anfangsbestand '+k.name+' zum '+dt(datum);}
+    else buche({datum:datum,text:'Anfangsbestand '+k.name+' zum '+dt(datum),soll:soll,haben:haben,betrag:betrag,art:'eroeffnung',status:'gebucht'});
+    n++;
+  });
+  save();closeModal();toast(n+' Anfangsbestände gebucht');
+  if(current==='konten')vKonten();else if(current==='dashboard')vDashboard();
+}
+/* ---- Jahresabschluss ---- */
+function jahresabschlussDialog(){
+  var jahre=[];DB.buchungen.forEach(function(b){var y=jahrVon(b.datum);if(jahre.indexOf(y)<0)jahre.push(y);});
+  if(!jahre.length)jahre.push(DB.settings.geschaeftsjahr);
+  jahre.sort();
+  var vor=DB.settings.abschlussBis?parseInt(DB.settings.abschlussBis.slice(0,4),10)+1:jahre[0];
+  if(jahre.indexOf(vor)<0)vor=jahre[jahre.length-1];
+  openModal('<h2>Jahresabschluss</h2><div class="hint">Der Abschluss erstellt den <b>Abschlussbericht</b> (EÜR, Geldbestände, offene Forderungen, Unterschriftenfeld für die Kassenprüfung) und <b>sperrt alle Buchungen des Jahres</b> gegen Änderungen. Offene Forderungen bleiben offen und mahnbar – Zahlungen darauf sind weiter möglich. Das neue Jahr läuft automatisch weiter, die Bestände werden fortgeführt (keine extra Eröffnung nötig). Aufheben geht jederzeit unter Einstellungen.</div>'+
+  '<div class="field" style="max-width:200px"><label>Abzuschließendes Jahr</label><select id="ja_jahr" onchange="jaInfoRender()">'+jahre.map(function(y){return '<option'+(y===vor?' selected':'')+(gesperrtDatum(y+'-12-31')?' disabled':'')+'>'+y+(gesperrtDatum(y+'-12-31')?' (abgeschlossen)':'')+'</option>';}).join('')+'</select></div>'+
+  '<div id="ja_info"></div>'+
+  '<div class="mfoot"><button class="btn btn-hell" onclick="closeModal()">Abbrechen</button><button class="btn btn-hell" onclick="abschlussDrucken(parseInt(val(\'ja_jahr\'),10),true)">Nur Bericht (Vorschau)</button><button class="btn btn-rot" onclick="jahresabschlussAusfuehren()">Jahr abschließen & Bericht</button></div>');
+  jaInfoRender();
+}
+function jaInfoRender(){
+  var e=document.getElementById('ja_info');if(!e)return;
+  var j=parseInt(val('ja_jahr'),10);
+  var se=DB.konten.filter(function(k){return k.typ==='einnahme';}).reduce(function(a,k){return a+saldoJahr(k.nr,j);},0);
+  var sa=DB.konten.filter(function(k){return k.typ==='ausgabe';}).reduce(function(a,k){return a+saldoJahr(k.nr,j);},0);
+  var offen=DB.buchungen.filter(function(b){return b.status==='offen'&&(b.faellig||b.datum)<=j+'-12-31';});
+  var os=offen.reduce(function(a,b){return a+b.betrag;},0);
+  e.innerHTML='<div class="grid g3" style="margin:.6rem 0"><div class="card kpi"><b>'+eur(se)+'</b><span>Einnahmen '+j+'</span></div><div class="card kpi"><b class="rot">'+eur(sa)+'</b><span>Ausgaben '+j+'</span></div><div class="card kpi"><b class="'+(se-sa<0?'rot':'')+'">'+eur(se-sa)+'</b><span>Ergebnis '+j+'</span></div></div>'+
+  '<div class="tbl-wrap"><table><tr><th>Geldkonto</th><th class="num">Bestand 01.01.'+j+'</th><th class="num">Bestand 31.12.'+j+'</th></tr>'+geldkonten().map(function(k){return '<tr><td>'+k.nr+' '+esc(k.name)+'</td><td class="num">'+eur(saldoBis(k.nr,j+'-01-01'))+'</td><td class="num"><b>'+eur(saldoBis(k.nr,j+'-12-31'))+'</b></td></tr>';}).join('')+'</table></div>'+
+  (offen.length?'<p style="font-size:.82rem;color:var(--grau);margin-top:.5rem">Zum 31.12.'+j+' noch offen: <b>'+offen.length+' Forderungen über '+eur(os)+'</b> – bleiben bestehen.</p>':'');
+}
+function jahresabschlussAusfuehren(){
+  var j=parseInt(val('ja_jahr'),10);if(!j)return;
+  if(!confirm('Jahr '+j+' wirklich abschließen?\n\nAlle Buchungen bis 31.12.'+j+' werden gegen Bearbeitung und Storno gesperrt. Aufheben ist unter Einstellungen möglich.'))return;
+  DB.settings.abschlussBis=j+'-12-31';
+  if(DB.settings.geschaeftsjahr<=j)DB.settings.geschaeftsjahr=j+1;
+  save();closeModal();toast('Jahr '+j+' abgeschlossen – Geschäftsjahr ist jetzt '+DB.settings.geschaeftsjahr);
+  abschlussDrucken(j,false);
+  if(current==='auswertung')vAuswertung();else if(current==='einstellungen')vEinstellungen();
+}
+function abschlussAufheben(){
+  if(!DB.settings.abschlussBis)return;
+  if(!confirm('Jahresabschluss (gesperrt bis '+dt(DB.settings.abschlussBis)+') aufheben? Buchungen des Jahres sind danach wieder änderbar.'))return;
+  DB.settings.abschlussBis=null;save();toast('Abschluss aufgehoben');vEinstellungen();
+}
+function abschlussDrucken(j,vorschau){
+  var s=DB.settings;
+  var einn=DB.konten.filter(function(k){return k.typ==='einnahme';}).map(function(k){return [k,saldoJahr(k.nr,j)];}).filter(function(x){return Math.abs(x[1])>0.004;});
+  var ausg=DB.konten.filter(function(k){return k.typ==='ausgabe';}).map(function(k){return [k,saldoJahr(k.nr,j)];}).filter(function(x){return Math.abs(x[1])>0.004;});
+  var se=einn.reduce(function(a,x){return a+x[1];},0),sa=ausg.reduce(function(a,x){return a+x[1];},0);
+  var offen=DB.buchungen.filter(function(b){return b.status==='offen'&&(b.faellig||b.datum)<=j+'-12-31';});
+  printHTML('<div class="beleg"><div class="kopf"><div><h2>'+esc(s.vereinsname)+' '+esc(s.rechtsform)+'</h2><small>'+esc(s.strasse)+' · '+esc(s.plz)+' '+esc(s.ort)+'</small></div><div style="text-align:right"><h2>Jahresabschluss '+j+'</h2><small>Einnahmen-Überschuss-Rechnung'+(vorschau?' · VORSCHAU':'')+'</small></div></div>'+
+  '<table class="btab"><tr><th colspan="2">Einnahmen</th></tr>'+einn.map(function(x){return '<tr><td>'+x[0].nr+' '+esc(x[0].name)+'</td><td class="num">'+eur(x[1])+'</td></tr>';}).join('')+'<tr class="sumr"><td><b>Summe Einnahmen</b></td><td class="num"><b>'+eur(se)+'</b></td></tr>'+
+  '<tr><th colspan="2" style="padding-top:.8rem">Ausgaben</th></tr>'+ausg.map(function(x){return '<tr><td>'+x[0].nr+' '+esc(x[0].name)+'</td><td class="num">'+eur(x[1])+'</td></tr>';}).join('')+'<tr class="sumr"><td><b>Summe Ausgaben</b></td><td class="num"><b>'+eur(sa)+'</b></td></tr>'+
+  '<tr class="sumr"><td><b>'+(se-sa>=0?'Überschuss':'Fehlbetrag')+' '+j+'</b></td><td class="num"><b>'+eur(se-sa)+'</b></td></tr></table>'+
+  '<h3 style="margin-top:1rem">Geldbestände</h3><table class="btab"><tr><th>Konto</th><th class="num">01.01.'+j+'</th><th class="num">31.12.'+j+'</th></tr>'+geldkonten().map(function(k){return '<tr><td>'+k.nr+' '+esc(k.name)+'</td><td class="num">'+eur(saldoBis(k.nr,j+'-01-01'))+'</td><td class="num">'+eur(saldoBis(k.nr,j+'-12-31'))+'</td></tr>';}).join('')+'</table>'+
+  (offen.length?'<p style="font-size:.85rem;margin-top:.8rem">Zum 31.12.'+j+' bestehen <b>'+offen.length+' offene Forderungen über '+eur(offen.reduce(function(a,b){return a+b.betrag;},0))+'</b> (Beitrags-/Projektforderungen, werden im Folgejahr weiterverfolgt).</p>':'<p style="font-size:.85rem;margin-top:.8rem">Zum 31.12.'+j+' bestehen keine offenen Forderungen.</p>')+
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:2.2rem 3rem;margin-top:3rem">'+['Kassierer/in','1. Vorsitzende/r','Kassenprüfer/in 1','Kassenprüfer/in 2'].map(function(r){return '<div style="border-top:1px solid #333;padding-top:.3rem;font-size:.8rem">Ort, Datum, Unterschrift – '+r+'</div>';}).join('')+'</div>'+
+  '</div>','Jahresabschluss '+j);
 }
 
 /* ---------- Start ---------- */
