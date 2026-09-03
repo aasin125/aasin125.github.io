@@ -716,18 +716,26 @@ function vKalender(){
   '<div class="kgrid">'+['Mo','Di','Mi','Do','Fr','Sa','So'].map(function(w){return '<div class="kh">'+w+'</div>';}).join('')+cells+'</div>'+
   '<div class="grid g2" style="margin-top:1rem"><div class="card"><h3>Nächste Termine</h3>'+naechsteTermineHTML(10)+'</div><div class="card"><h3>Hinweise</h3><p style="font-size:.86rem;color:var(--grau)">Klick auf einen Tag legt dort einen Termin an, Klick auf einen Termin öffnet ihn. <b style="color:var(--ink)">Geburtstage</b> aktiver Mitglieder erscheinen automatisch (aus dem Geburtsdatum im Kontakt). Termine, die als „für Mitglieder sichtbar“ markiert sind, können später auf der Website im Mitgliederbereich angezeigt werden.</p></div></div>');
 }
+function terminLoeschen(id){
+  if(!confirm('Termin wirklich löschen?'))return;
+  DB.termine=DB.termine.filter(function(x){return x.id!==id;});
+  save();closeModal();toast('Termin gelöscht');vKalender();
+}
 function terminForm(id,datum){
-  var t=id?DB.termine.find(function(x){return x.id===id;}):{datum:datum||heute(),typ:'treffen',sichtbar:true};
+  var t=id?DB.termine.find(function(x){return x.id===id;}):{datum:datum||heute(),typ:'treffen',sichtbarFuer:'alle',sichtbar:true};
   openModal('<h2>'+(id?'Termin bearbeiten':'Neuer Termin')+'</h2>'+
   '<div class="field"><label>Titel</label><input id="t_titel" value="'+esc(t.titel||'')+'" placeholder="z. B. Zoch Marialinden, Wagenbau, Vorstandssitzung"></div>'+
   '<div class="frow3"><div class="field"><label>Datum</label><input id="t_datum" type="date" value="'+esc(t.datum)+'"></div><div class="field"><label>Uhrzeit</label><input id="t_zeit" type="time" value="'+esc(t.zeit||'')+'"></div><div class="field"><label>Typ</label><select id="t_typ">'+Object.keys(TTYP).filter(function(k){return k!=='geburtstag'&&k!=='jubilaeum';}).map(function(k){return '<option value="'+k+'"'+(t.typ===k?' selected':'')+'>'+TTYP[k][0]+'</option>';}).join('')+'</select></div></div>'+
-  '<div class="field"><label>Ort</label><input id="t_ort" value="'+esc(t.ort||'')+'"></div>'+
-  '<div class="field"><label>Beschreibung</label><textarea id="t_besch">'+esc(t.beschreibung||'')+'</textarea></div>'+
-  '<label class="check"><input type="checkbox" id="t_sicht" '+(t.sichtbar!==false?'checked':'')+'> <span>Für Mitglieder sichtbar (später im Mitgliederbereich der Website)</span></label>'+
-  '<div class="mfoot">'+(id?'<button class="btn btn-ghost" onclick="if(confirm(\'Termin löschen?\')){DB.termine=DB.termine.filter(function(x){return x.id!==\''+id+'\';});save();closeModal();vKalender();}">Löschen</button>':'')+'<button class="btn btn-hell" onclick="closeModal()">Abbrechen</button><button class="btn btn-rot" onclick="terminSpeichern(\''+(id||'')+'\')">Speichern</button></div>');
+  '<div class="frow"><div class="field"><label>Ort (optional)</label><input id="t_ort" value="'+esc(t.ort||'')+'" placeholder="z. B. Festplatz Much, Vereinsheim"></div>'+
+  '<div class="field"><label>Bis Uhrzeit (optional)</label><input id="t_bis" type="time" value="'+esc(t.bis||'')+'"></div></div>'+
+  '<div class="field"><label>Beschreibung / Bemerkung</label><textarea id="t_besch" style="min-height:80px" placeholder="Treffpunkt, Was mitbringen, weitere Infos ...">'+esc(t.beschreibung||'')+'</textarea></div>'+
+  '<div class="field"><label>Im Portal sichtbar für</label><select id="t_sicht">'+
+  [['alle','Alle Mitglieder'],['vorstand','Nur Vorstand'],['keine','Nicht im Portal anzeigen']].map(function(g){return '<option value="'+g[0]+'"'+((t.sichtbarFuer||(t.sichtbar!==false?'alle':'keine'))===g[0]?' selected':'')+'>'+g[1]+'</option>';}).join('')+
+  '</select><small style="display:block;margin-top:.3rem;color:var(--grau)">Vorstand = Rollen Vorsitzende/r oder Kassierer · Termin zeigt Uhrzeit, Ort & Beschreibung</small></div>'+
+    '<div class="mfoot">'+(id?'<button class="btn btn-ghost" onclick="terminLoeschen(\''+id+'\')" style="color:var(--rot)">Termin löschen</button>':'')+'<button class="btn btn-hell" onclick="closeModal()">Abbrechen</button><button class="btn btn-rot" onclick="terminSpeichern(\''+(id||'')+'\')">Speichern</button></div>');
 }
 function terminSpeichern(id){
-  var d={titel:val('t_titel'),datum:val('t_datum'),zeit:val('t_zeit'),typ:val('t_typ'),ort:val('t_ort'),beschreibung:val('t_besch'),sichtbar:val('t_sicht')};
+  var d={titel:val('t_titel'),datum:val('t_datum'),zeit:val('t_zeit'),bis:val('t_bis'),typ:val('t_typ'),ort:val('t_ort'),beschreibung:val('t_besch'),sichtbarFuer:val('t_sicht')||'alle',sichtbar:val('t_sicht')!=='keine'};
   if(!d.titel||!d.datum){toast('Titel und Datum nötig',true);return;}
   if(id){Object.assign(DB.termine.find(function(x){return x.id===id;}),d);}else{DB.termine.push(Object.assign({id:uid()},d));}
   save();closeModal();toast('Termin gespeichert');if(current==='kalender')vKalender();else if(current==='dashboard')vDashboard();
