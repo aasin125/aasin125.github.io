@@ -720,6 +720,10 @@ function load(){
   if(!DB.termine)DB.termine=[];
   if(!DB.schreiben)DB.schreiben=[];
   if(!s.rollen)s.rollen=defaultRollen();
+  (DB.kontakte||[]).forEach(function(k){
+    if(!k.aemter)k.aemter=(k.rollen||[]).map(function(r){return {id:uid(),rolle:r,von:(k.erstellt||heute()),bis:null};});
+    aemterSync(k);
+  });
   if(!s.briefe)s.briefe={};
   if(!s.briefeVersion||s.briefeVersion<2){s.briefe=defaultBriefe();s.briefeVersion=2;}
   var dflt=defaultBriefe();Object.keys(dflt).forEach(function(k){if(!s.briefe[k])s.briefe[k]=dflt[k];});
@@ -1188,13 +1192,18 @@ function kontaktForm(id,cb){
     '<div class="field"><label>Erziehungsberechtigte/r (bei Minderjährigen – Name & Telefon)</label><input id="k_erz" value="'+esc(k.erziehungsberechtigt||'')+'" placeholder="z. B. Petra Mustermann, 0170 1234567"></div>'+
     '<div class="field"><label>Notfallkontakt (optional – Name & Telefon)</label><input id="k_notfall" value="'+esc(k.notfall||'')+'"></div></div>'+
   '<div id="kf_rollen" style="display:none">'+
-    '<div class="field"><label>Rollen im Verein</label><div style="display:flex;flex-wrap:wrap;gap:.3rem .9rem">'+DB.settings.rollen.map(function(r){return '<label class="check" style="margin:.15rem 0"><input type="checkbox" class="k_rolle" value="'+esc(r)+'" '+((k.rollen||[]).indexOf(r)>=0?'checked':'')+'> '+esc(r)+'</label>';}).join('')+'</div><small style="color:var(--grau)">Rollen verwaltest du unter Einstellungen.</small></div>'+
+    '<div class="field"><label>Ämter & Rollen (mit Von/Bis)</label><div id="kf_aemter"></div><button class="btn btn-hell btn-sm" onclick="amtRow()">+ Amt/Rolle hinzufügen</button><br><small style="color:var(--grau)">Bis-Datum leer lassen, solange das Amt läuft. Beim Beenden das Bis-Datum eintragen – die Historie bleibt erhalten. Die Rollen-Auswahlliste pflegst du unter Einstellungen.</small></div>'+
     '<div class="field"><label>Notizen</label><textarea id="k_notiz" style="min-height:110px">'+esc(k.notizen||'')+'</textarea></div></div>'+
   '<div class="mfoot">'+(id?'<button class="btn btn-ghost" onclick="kontaktLoeschen(\''+id+'\')">Löschen</button>':'')+'<button class="btn btn-hell" onclick="closeModal()">Abbrechen</button><button class="btn btn-rot" onclick="kontaktSpeichern(\''+(id||'')+'\')">Speichern</button></div>',true);
   window._kcb=cb;
+  (k.aemter||[]).slice().sort(function(a,b){return (a.von||'').localeCompare(b.von||'');}).forEach(function(a){amtRow(a.rolle,a.von,a.bis);});
 }
 function kontaktSpeichern(id){
-  var d={typ:val('k_typ'),firma:val('k_firma'),webseite:val('k_web'),vorname:val('k_vorname'),nachname:val('k_nachname'),strasse:val('k_strasse'),plz:val('k_plz'),ort:val('k_ort'),email:val('k_email'),telefon:val('k_telefon'),geburtstag:val('k_geb'),iban:val('k_iban').replace(/\s+/g,'').toUpperCase(),erziehungsberechtigt:val('k_erz'),notfall:val('k_notfall'),notizen:val('k_notiz'),rollen:Array.prototype.slice.call(document.querySelectorAll('.k_rolle:checked')).map(function(c){return c.value;})};
+  var d={typ:val('k_typ'),firma:val('k_firma'),webseite:val('k_web'),vorname:val('k_vorname'),nachname:val('k_nachname'),strasse:val('k_strasse'),plz:val('k_plz'),ort:val('k_ort'),email:val('k_email'),telefon:val('k_telefon'),geburtstag:val('k_geb'),iban:val('k_iban').replace(/\s+/g,'').toUpperCase(),erziehungsberechtigt:val('k_erz'),notfall:val('k_notfall'),notizen:val('k_notiz'),aemter:Array.prototype.slice.call(document.querySelectorAll('#kf_aemter .amtrow')).map(function(row){
+    return {id:uid(),rolle:row.querySelector('.amt_rolle').value,von:row.querySelector('.amt_von').value||heute(),bis:row.querySelector('.amt_bis').value||null};
+  })};
+  for(var ai=0;ai<d.aemter.length;ai++){var a=d.aemter[ai];if(a.bis&&a.bis<a.von){tabShow('kf_','kf_rollen');toast('Amt „'+a.rolle+'“: Bis-Datum liegt vor dem Ab-Datum',true);return;}}
+  d.rollen=[];(function(){var h=heute();d.aemter.forEach(function(a){if((!a.bis||a.bis>=h)&&a.von<=h&&d.rollen.indexOf(a.rolle)<0)d.rollen.push(a.rolle);});})();
   if(d.typ==='person'&&!d.nachname){tabShow('kf_','kf_stamm');toast('Nachname fehlt',true);return;}
   if(d.typ==='firma'&&!d.firma){tabShow('kf_','kf_stamm');toast('Firmenname fehlt',true);return;}
   if(!id){var dup=DB.kontakte.find(function(x){return x.typ===d.typ&&(d.typ==='person'?(x.nachname||'').toLowerCase()===d.nachname.toLowerCase()&&(x.vorname||'').toLowerCase()===d.vorname.toLowerCase():(x.firma||'').toLowerCase()===d.firma.toLowerCase());});
@@ -1223,7 +1232,7 @@ function kontaktDetail(id){
     '<div class="grid g2">'+
     '<div><h3 style="font-size:.82rem;text-transform:uppercase;letter-spacing:.06em;color:var(--grau);margin-bottom:.5rem">Adresse & Kontakt</h3><dl><dt>Anschrift</dt><dd>'+esc(k.strasse||'–')+'<br>'+esc(k.plz||'')+' '+esc(k.ort||'')+'</dd><dt>E-Mail</dt><dd>'+(k.email?'<a href="mailto:'+esc(k.email)+'">'+esc(k.email)+'</a>':'–')+'</dd><dt>Telefon</dt><dd>'+esc(k.telefon||'–')+'</dd>'+(k.webseite?'<dt>Webseite</dt><dd>'+esc(k.webseite)+'</dd>':'')+'</dl></div>'+
     '<div><h3 style="font-size:.82rem;text-transform:uppercase;letter-spacing:.06em;color:var(--grau);margin-bottom:.5rem">Persönliches & Bank</h3><dl><dt>Geburtstag</dt><dd>'+dt(k.geburtstag)+(a!==null?' ('+a+')':'')+'</dd>'+(k.erziehungsberechtigt?'<dt>Erziehungsber.</dt><dd>'+esc(k.erziehungsberechtigt)+'</dd>':'')+(k.notfall?'<dt>Notfallkontakt</dt><dd>'+esc(k.notfall)+'</dd>':'')+'<dt>IBAN</dt><dd>'+esc(k.iban||'–')+'</dd></dl></div></div>'+
-    '<div style="margin-top:.8rem"><h3 style="font-size:.82rem;text-transform:uppercase;letter-spacing:.06em;color:var(--grau);margin-bottom:.4rem">Rollen</h3>'+rollenTags(k)+'</div>'+
+    '<div style="margin-top:.8rem"><h3 style="font-size:.82rem;text-transform:uppercase;letter-spacing:.06em;color:var(--grau);margin-bottom:.4rem">Ämter & Rollen</h3>'+aemterTabelle(k)+'</div>'+
     (k.notizen?'<div style="margin-top:.8rem;padding:.7rem .9rem;background:var(--tint);border-radius:8px;font-size:.86rem"><b>Notizen:</b> '+esc(k.notizen)+'</div>':'')+
     '<div class="mfoot" style="justify-content:flex-start"><button class="btn btn-rot btn-sm" onclick="kontaktForm(\''+id+'\',function(){kontaktDetail(\''+id+'\')})">Bearbeiten</button>'+(aktiv?'<button class="btn btn-gruen btn-sm" onclick="mitgliedDetail(\''+aktiv.id+'\')">Zur Mitgliedsakte</button>':'<button class="btn btn-gruen btn-sm" onclick="closeModal();go(\'aufnahme\',\''+id+'\')">Mitglied machen</button>')+(spenden>0?'':'')+'</div></div>'+
   '<div id="kd_mit" style="display:none">'+(ms.length?'<div class="tbl-wrap"><table><tr><th>Mitgl.-Nr.</th><th>Art</th><th>Eintritt</th><th>Austritt</th><th>Status</th><th></th></tr>'+ms.map(function(m){return '<tr><td><span class="mnr">'+m.mitgliedsnr+'</span></td><td>'+ARTEN[m.art]+'</td><td>'+dt(m.eintritt)+'</td><td>'+dt(m.austritt)+(m.austrittsgrund?'<br><small>'+esc(m.austrittsgrund)+'</small>':'')+'</td><td>'+statusTag(m.status)+'</td><td class="akt"><button class="btn btn-hell btn-sm" onclick="mitgliedDetail(\''+m.id+'\')">Akte</button></td></tr>';}).join('')+'</table></div>':'<div class="empty">Keine Mitgliedschaft.<br><br><button class="btn btn-gruen" onclick="closeModal();go(\'aufnahme\',\''+id+'\')">Jetzt Mitglied machen</button></div>')+'</div>'+
@@ -2240,6 +2249,46 @@ function abschlussDrucken(j,vorschau){
   (offen.length?'<p style="font-size:.85rem;margin-top:.8rem">Zum 31.12.'+j+' bestehen <b>'+offen.length+' offene Forderungen über '+eur(offen.reduce(function(a,b){return a+b.betrag;},0))+'</b> (Beitrags-/Projektforderungen, werden im Folgejahr weiterverfolgt).</p>':'<p style="font-size:.85rem;margin-top:.8rem">Zum 31.12.'+j+' bestehen keine offenen Forderungen.</p>')+
   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:2.2rem 3rem;margin-top:3rem">'+['Kassierer/in','1. Vorsitzende/r','Kassenprüfer/in 1','Kassenprüfer/in 2'].map(function(r){return '<div style="border-top:1px solid #333;padding-top:.3rem;font-size:.8rem">Ort, Datum, Unterschrift – '+r+'</div>';}).join('')+'</div>'+
   '</div>','Jahresabschluss '+j);
+}
+
+/* ============================================================
+   V12: ÄMTER MIT VON/BIS-DATUM (Rollen-Historie)
+   ============================================================ */
+function aktiveRollen(k){
+  var h=heute();
+  var out=[];(k.aemter||[]).forEach(function(a){if((!a.bis||a.bis>=h)&&a.von<=h&&out.indexOf(a.rolle)<0)out.push(a.rolle);});
+  return out;
+}
+function aemterSync(k){k.rollen=aktiveRollen(k);}
+function amtRow(rolle,von,bis){
+  var wrap=document.getElementById('kf_aemter');if(!wrap)return;
+  var div=document.createElement('div');
+  div.className='amtrow';div.style.cssText='display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-bottom:.4rem';
+  var opts=DB.settings.rollen.slice();
+  if(rolle&&opts.indexOf(rolle)<0)opts.unshift(rolle);
+  div.innerHTML='<select class="amt_rolle" style="padding:.4rem;border:1.5px solid var(--linie);border-radius:6px;min-width:180px">'+opts.map(function(r){return '<option'+(r===rolle?' selected':'')+'>'+esc(r)+'</option>';}).join('')+'</select>'+
+  '<label style="font-size:.75rem;color:var(--grau)">ab</label><input type="date" class="amt_von" value="'+(von||heute())+'" style="padding:.4rem;border:1.5px solid var(--linie);border-radius:6px">'+
+  '<label style="font-size:.75rem;color:var(--grau)">bis</label><input type="date" class="amt_bis" value="'+(bis||'')+'" style="padding:.4rem;border:1.5px solid var(--linie);border-radius:6px" title="leer = läuft aktuell">'+
+  '<button class="btn btn-ghost btn-sm" onclick="this.parentNode.remove()" title="Eintrag entfernen (nur für Fehleingaben – beendete Ämter bitte mit Bis-Datum behalten)">✕</button>';
+  wrap.appendChild(div);
+}
+function amtBeenden(kid,aid){
+  var k=kontakt(kid);if(!k)return;
+  var a=(k.aemter||[]).find(function(x){return x.id===aid;});if(!a)return;
+  var d=prompt('Amt „'+a.rolle+'“ beenden – Bis-Datum (JJJJ-MM-TT):',heute());
+  if(!d)return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){toast('Datum bitte als JJJJ-MM-TT',true);return;}
+  if(d<a.von){toast('Bis-Datum liegt vor dem Ab-Datum',true);return;}
+  a.bis=d;aemterSync(k);save();toast('Amt beendet zum '+dt(d));kontaktDetail(kid);
+}
+function aemterTabelle(k){
+  var liste=(k.aemter||[]).slice().sort(function(a,b){return (b.von||'').localeCompare(a.von||'');});
+  if(!liste.length)return '<span style="color:var(--grau)">Keine Ämter/Rollen erfasst.</span>';
+  var h=heute();
+  return '<div class="tbl-wrap"><table><tr><th>Amt / Rolle</th><th>Von</th><th>Bis</th><th></th></tr>'+liste.map(function(a){
+    var aktiv=(!a.bis||a.bis>=h)&&a.von<=h;
+    return '<tr><td><b>'+esc(a.rolle)+'</b>'+(aktiv?' <span class="tag tag-gruen">aktuell</span>':'')+'</td><td>'+dt(a.von)+'</td><td>'+(a.bis?dt(a.bis):'<span style="color:var(--grau)">läuft</span>')+'</td><td class="akt">'+(aktiv?'<button class="btn btn-hell btn-sm" onclick="amtBeenden(\''+k.id+'\',\''+a.id+'\')">Beenden</button>':'')+'</td></tr>';
+  }).join('')+'</table></div>';
 }
 
 /* ---------- Start ---------- */
